@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         bili-dynamic-block
 // @namespace    bili-dynamic-block
-// @version      1.0.0
+// @version      1.0.1
 // @author       xiaohuohumax
 // @description  bili dynamic block
 // @license      MIT
@@ -32,7 +32,7 @@
   var _GM_getValue = /* @__PURE__ */ (() => typeof GM_getValue != "undefined" ? GM_getValue : void 0)();
   var _GM_registerMenuCommand = /* @__PURE__ */ (() => typeof GM_registerMenuCommand != "undefined" ? GM_registerMenuCommand : void 0)();
   var _GM_setValue = /* @__PURE__ */ (() => typeof GM_setValue != "undefined" ? GM_setValue : void 0)();
-  const version = "1.0.0";
+  const version = "1.0.1";
   const ID = "bili-dynamic-block";
   const VERSION = version;
   const LAST_VERSION = 1;
@@ -319,6 +319,10 @@
   class DynamicBlocker {
     constructor(store, view) {
       __publicField(this, "blockCount", 0);
+      __publicField(this, "filteredClass", `${ID}-filtered`);
+      __publicField(this, "configChanged", false);
+      __publicField(this, "filterTimer");
+      __publicField(this, "debounceTime", 600);
       __publicField(this, "filterDynamicByRules", (dynamicContent) => {
         return this.store.blockRules.some((rule) => {
           try {
@@ -330,26 +334,34 @@
         });
       });
       __publicField(this, "filterDynamic", () => {
-        const cards = Array.from(document.querySelectorAll(".bili-dyn-list__item"));
-        cards.filter((card) => {
-          if (this.filterDynamicByRules(card.textContent || "")) {
-            return true;
-          }
-          const contexts = Array.from(card.querySelectorAll(".bili-rich-text__content"));
-          return contexts.some((c) => {
-            const hasGoodsSpan = c.querySelector('span[data-type="goods"]');
-            const hasLotterySpan = c.querySelector('span[data-type="lottery"]');
-            const hasVoteSpan = c.querySelector('span[data-type="vote"]');
-            return hasGoodsSpan || hasLotterySpan || hasVoteSpan;
+        clearTimeout(this.filterTimer);
+        this.filterTimer = setTimeout(() => {
+          const cards = Array.from(document.querySelectorAll(".bili-dyn-list__item"));
+          cards.filter((card) => {
+            if (card.classList.contains(this.filteredClass) && !this.configChanged) {
+              return false;
+            }
+            card.classList.add(this.filteredClass);
+            if (this.filterDynamicByRules(card.textContent || "")) {
+              return true;
+            }
+            const contexts = Array.from(card.querySelectorAll(".bili-rich-text__content"));
+            return contexts.some((c) => {
+              const hasGoodsSpan = c.querySelector('span[data-type="goods"]');
+              const hasLotterySpan = c.querySelector('span[data-type="lottery"]');
+              const hasVoteSpan = c.querySelector('span[data-type="vote"]');
+              return hasGoodsSpan || hasLotterySpan || hasVoteSpan;
+            });
+          }).forEach((card) => {
+            var _a, _b;
+            card.remove();
+            this.blockCount++;
+            const content = (_b = (_a = card.textContent) == null ? void 0 : _a.trim()) == null ? void 0 : _b.replaceAll("\n", () => "");
+            console.log(`已拦截 ${this.blockCount} 条动态：${content}`);
+            this.view.updateStatInfo(`已拦截 ${this.blockCount} 条动态`);
           });
-        }).forEach((card) => {
-          var _a, _b;
-          card.remove();
-          this.blockCount++;
-          const content = (_b = (_a = card.textContent) == null ? void 0 : _a.trim()) == null ? void 0 : _b.replaceAll("\n", () => "");
-          console.log(`已拦截 ${this.blockCount} 条动态：${content}`);
-          this.view.updateStatInfo(`已拦截 ${this.blockCount} 条动态`);
-        });
+          this.configChanged = false;
+        }, this.debounceTime);
       });
       this.store = store;
       this.view = view;
@@ -366,6 +378,7 @@
         subtree: true
       });
       this.store.addConfigChangeListener(() => {
+        this.configChanged = true;
         console.log("屏蔽规则更新，重新过滤动态");
         this.filterDynamic();
       });
